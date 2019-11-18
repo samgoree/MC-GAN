@@ -75,7 +75,7 @@ def define_G_3d(input_nc, output_nc, norm='batch', groups=26, ksize=3,padding=1,
     netG_3d = ResnetGenerator_3d_conv(input_nc, output_nc, norm_type=norm, groups=groups, ksize=ksize, padding=padding, gpu_ids=gpu_ids)
 
     if len(gpu_ids) > 0:
-        netG_3d.cuda(device_id=gpu_ids[0])
+        netG_3d.cuda(device=gpu_ids[0])
 
     netG_3d.apply(weights_init)
     return netG_3d
