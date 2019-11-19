@@ -50,7 +50,7 @@ class BaseModel():
         save_path = os.path.join(self.save_dir, save_filename)
         torch.save(network.cpu().state_dict(), save_path)
         if len(gpu_ids) and torch.cuda.is_available():
-            network.cuda(device_id=gpu_ids[0])
+            network.cuda(device=gpu_ids[0])
 
     def load_combo_network(self, network1, network2, network_label, epoch_label,print_weights=False,ignore_BN=False):
         save_filename = '%s_net_%s.pth' % (epoch_label, network_label)
