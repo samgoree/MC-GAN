@@ -32,18 +32,18 @@ webpage = html.HTML(web_dir, 'Experiment = %s, Phase = %s, Epoch = %s' % (opt.na
 ssim_score = 0
 mse_score = 0
 for i, data in enumerate(dataset):
-    if i >= opt.how_many:
+    if i >= opt.how_many or i >= 50:
         break
     model.set_input(data)
     model.test()
     visuals = model.get_current_visuals()
     img_path = model.get_image_paths()
     print('process image... %s' % img_path)
-    scores = visualizer.eval_current_result(visuals)
-    print "ssim: %s"%(scores[0])
-    print "MSE: %s"%(scores[1])
-    ssim_score += scores[0]
-    mse_score += scores[1]
+    # scores = visualizer.eval_current_result(visuals)
+    #print("ssim: %s"%(scores[0]))
+    #print("MSE: %s"%(scores[1]))
+    #ssim_score += scores[0]
+    #mse_score += scores[1]
     visualizer.save_images(webpage, visuals, img_path)
 
 print("Final SSIM score & MSE score for %s images:"%(i+1), ssim_score/(i+1), mse_score/(i+1))

@@ -66,7 +66,7 @@ class BaseModel():
                     weights[key].fill_(1.0)
         if print_weights:
             for key in weights.keys():
-                print key, 'pretrained, mean,std:', torch.mean(weights[key]),torch.std(weights[key])
+                print(key, 'pretrained, mean,std:', torch.mean(weights[key]),torch.std(weights[key]))
 
 
         keys1 = network1.state_dict().keys()
@@ -108,7 +108,7 @@ class BaseModel():
                     weights[key].fill_(1.0)
         if print_weights:
             for key in weights.keys():
-                print key, 'pretrained, mean,std:', torch.mean(weights[key]),torch.std(weights[key])
+                print(key, 'pretrained, mean,std:', torch.mean(weights[key]),torch.std(weights[key]))
 
         network.load_state_dict(weights)
 

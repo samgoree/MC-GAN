@@ -152,15 +152,17 @@ class Data(object):
         else: 
             #randomly remove some of the glyphs in input
             if not self.dict:
-                blank_ind = np.repeat(np.random.permutation(A.size(1)/n_rgb)[0:int(self.blanks*A.size(1)/n_rgb)],n_rgb)
+                # raise RuntimeError('A:' + str(A) + '\n' + str(A.size(1)))
+                blank_ind = np.repeat(np.random.permutation(A.size(1)//n_rgb)[0:int(self.blanks*A.size(1)//n_rgb)],n_rgb)
             else:
-                file_name = map(lambda x:x.split("/")[-1],AB_paths)
+                file_name = list(map(lambda x:x.split("/")[-1],AB_paths))
                 if len(file_name)>1:
                     raise Exception('batch size should be 1')
                 file_name=file_name[0]
                 blank_ind = self.random_dict[file_name][0:int(self.blanks*A.size(1)/n_rgb)]
 
             rgb_inds = np.tile(range(n_rgb),int(self.blanks*A.size(1)/n_rgb))
+            # raise RuntimeError('rgb_inds ' + str(len(rgb_inds)) + ' blank_ind ' + str(len(blank_ind)))
             blank_ind = blank_ind*n_rgb + rgb_inds
             AA = A.clone()
             AA.index_fill_(1,LongTensor(list(blank_ind)),1)
@@ -441,7 +443,7 @@ class DataLoader(BaseDataLoader):
         test_dict = opt.dataroot+'/test_dict/dict.pkl'
         if opt.phase=='test':
             if os.path.isfile(test_dict):
-                dict_inds = pickle.load(open(test_dict))
+                dict_inds = pickle.load(open(test_dict, 'rb'), encoding='latin1')
             else:
                 warnings.warn('Blanks in test data are random. create a pkl file in ~/data_path/test_dict/dict.pkl including predifined random indices')
 

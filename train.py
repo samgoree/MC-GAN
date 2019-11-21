@@ -52,7 +52,7 @@ for epoch in range(1, opt.niter + opt.niter_decay + 1):
         model.save('latest')
         model.save(epoch)
 
-    print('End of epoch %d / %d \t Time Taken: %d sec' %
+    print('End of epoch %d / %d \t Time Taken: %f sec' %
           (epoch, opt.niter + opt.niter_decay, time.time() - epoch_start_time))
 
     if epoch > opt.niter:

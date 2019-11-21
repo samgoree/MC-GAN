@@ -4,6 +4,7 @@
 # MC-GAN
 # Train and Test conditional GAN Glyph network
 # By Samaneh Azadi
+# modified 11/21/19 Sam Goree
 #=====================================
 
 
@@ -12,8 +13,8 @@
 #=====================================
 
 DATA=$1
-DATASET="./datasets/${DATA}/"
-experiment_dir="GlyphNet_pretrain"
+DATASET="./datasets/devangari_fonts/full_fonts/"
+experiment_dir="GlyphNet_train_devangari"
 MODEL=cGAN
 MODEL_G=resnet_6blocks
 MODEL_D=n_layers
@@ -21,14 +22,14 @@ n_layers_D=1
 NORM=batch
 IN_NC=70
 O_NC=70
-GRP=26
+GRP=70
 PRENET=2_layers
-FINESIZE=64
-LOADSIZE=64
+FINESIZE=32
+LOADSIZE=32
 LAM_A=100
 NITER=250
 NITERD=100
-BATCHSIZE=150
+BATCHSIZE=15
 CUDA_ID=0
 
 
