@@ -39,7 +39,9 @@ def normalize_stack(input,val=0.5):
 
 def CreateDataLoader(opt):
     data_loader = None
-    if opt.stack:
+    if opt.auxiliarydataroot != 'none':
+        data_loader = MultiLanguageDataLoader()
+    elif opt.stack:
         data_loader = StackDataLoader()
     elif opt.partial:
         data_loader = PartialDataLoader()
@@ -150,6 +152,7 @@ class Data(object):
         if self.blanks == 0:
             AA = A.clone()
         else: 
+            # SG 12/4 --- Edit this to handle missing devanagari GT
             #randomly remove some of the glyphs in input
             if not self.dict:
                 # raise RuntimeError('A:' + str(A) + '\n' + str(A.size(1)))
@@ -168,6 +171,106 @@ class Data(object):
             AA.index_fill_(1,LongTensor(list(blank_ind)),1)
             
         return {'A': AA, 'A_paths': AB_paths, 'B':B, 'B_paths':AB_paths}
+    
+    
+class MultiLanguageData(object):
+    def __init__(self, data_loader_both, data_loader_one, data_loader_one_missing_characters,
+                 fineSize, max_dataset_size, rgb, dict_test={}, blanks=0.7):
+        self.data_loader_both = data_loader_both
+        self.data_loader_one = data_loader_one
+        self.fineSize = fineSize
+        self.max_dataset_size = max_dataset_size
+        self.rgb = rgb
+        self.blanks = blanks
+        self.random_dict=dict_test
+        self.dict = False
+        
+        self.n_missing_characters = data_loader_one_missing_characters # magic number for devanagari
+        
+        if len(self.random_dict.keys()):
+            self.dict = True
+
+        
+    def __iter__(self):
+        self.data_loader_both_iter = iter(self.data_loader_both)
+        self.data_loader_one_iter = iter(self.data_loader_one)
+        self.iter = 0
+        return self
+
+    def __next__(self):
+        self.iter += 1
+        if self.iter > self.max_dataset_size:
+            raise StopIteration
+        AB_both, AB_paths_both = next(self.data_loader_both_iter)
+        AB_one, AB_paths_one = next(self.data_loader_one_iter)
+        AB_paths = AB_paths_both + AB_paths_one
+
+        assert AB_both.size(3) == AB_one.size(3) # our images should be the same shape
+        assert AB_both.size(2) == AB_one.size(2)
+        # handle the uneven batch size case
+        if AB_both.size(0) != AB_one.size(0):
+            min_size = min(AB_both.size(0), AB_one.size(0))
+            AB_both = AB_both[:min_size]
+            AB_one = AB_one[:min_size]
+        # I think this is randomly offsetting each image for data augmentation
+        w_total = AB_both.size(3)
+        w = int(w_total / 2)
+        h = AB_both.size(2)
+        w_offset = random.randint(0, max(0, w - self.fineSize - 1))
+        h_offset = random.randint(0, max(0, h - self.fineSize - 1))
+        A_both = AB_both[:, :, h_offset:h_offset + self.fineSize,
+               w_offset:w_offset + self.fineSize]
+        B_both = AB_both[:, :, h_offset:h_offset + self.fineSize,
+               w_offset: w_offset + self.fineSize]
+        
+        A_one = AB_one[:, :, h_offset:h_offset + self.fineSize,
+               w_offset:w_offset + self.fineSize]
+        B_one = AB_one[:, :, h_offset:h_offset + self.fineSize,
+               w_offset: w_offset + self.fineSize]
+        n_rgb = 3 if self.rgb else 1
+        
+        
+        if self.blanks == 0:
+            AA = A.clone()
+        else:
+            #randomly remove some of the glyphs in input
+            if not self.dict:
+                # if there is no file, do it randomly
+                # raise RuntimeError('A:' + str(A) + '\n' + str(A.size(1)))
+                # get a permutation of the characters. Take the first self.blanks of them
+                # and repeat it across the RGB axis
+                blank_ind_both = np.repeat(np.random.permutation(A_both.size(1)//n_rgb)[0:int(self.blanks*A_both.size(1)//n_rgb)],n_rgb)
+                # the number of present characters
+                present_chars = A_one.size(1)//n_rgb - self.n_missing_characters
+                blank_ind_one = np.repeat(np.random.permutation(present_chars//n_rgb)[0:int(self.blanks*present_chars//n_rgb)],n_rgb)
+                blank_ind_one = np.concatenate([blank_ind_one, np.arange(present_chars, A_one.size(1), dtype='int32')])
+            else:
+                # otherwise get the blank indices from a provided file
+                file_name = list(map(lambda x:x.split("/")[-1],AB_paths))
+                if len(file_name)>1:
+                    raise Exception('batch size should be 1')
+                file_name=file_name[0]
+                blank_ind = self.random_dict[file_name][0:int(self.blanks*A_both.size(1)/n_rgb)]
+            rgb_inds_both = np.tile(range(n_rgb),int(self.blanks*A_both.size(1)/n_rgb))
+            rgb_inds_one = np.tile(range(n_rgb),int(self.blanks*present_chars + self.n_missing_characters))
+            # raise RuntimeError('rgb_inds ' + str(len(rgb_inds)) + ' blank_ind ' + str(len(blank_ind)))
+            blank_ind_both = blank_ind_both*n_rgb + rgb_inds_both
+            blank_ind_one = blank_ind_one*n_rgb + rgb_inds_one
+            AA_both = A_both.clone()
+            AA_both.index_fill_(1,LongTensor(list(blank_ind_both)),1)
+            AA_one = A_one.clone()
+            AA_one.index_fill_(1,LongTensor(list(blank_ind_one)),1)
+            
+            AA = torch.cat([AA_both, AA_one], 0)
+            B = torch.cat([B_both, B_one], 0)
+            # create a mask describing which characters are missing
+            missing_data_mask = torch.zeros_like(B)
+            missing_data_mask[B_both.size(0):,-self.n_missing_characters:] += 1
+            missing_data_mask = missing_data_mask.bool()
+            
+            # print('AA:', AA.shape, 'B_both:', B_both.shape, 'B_one:', B_one.shape, 'B:', B.shape, missing_data_mask.shape)
+        return {'A': AA, 'A_paths': AB_paths, 'B':B, 'B_paths':AB_paths, 'missing_data_mask':missing_data_mask}
+    
 
 class PartialData(object):
     def __init__(self, data_loader_A, data_loader_B, data_loader_base, fineSize, loadSize, max_dataset_size, phase, base_font=False, blanks=0):
@@ -462,3 +565,69 @@ class DataLoader(BaseDataLoader):
 
     def __len__(self):
         return min(len(self.dataset), self.opt.max_dataset_size)
+
+    
+class MultiLanguageDataLoader(BaseDataLoader):
+    """
+    New 12/4
+    A dataloader to load a combination of bilingual fonts and latin-only fonts,
+    each batch should be split 50/50 between them.
+    """
+    def initialize(self, opt):
+        
+        BaseDataLoader.initialize(self, opt)
+        self.fineSize = opt.fineSize
+        transform = transforms.Compose([
+            # TODO: Scale
+            transforms.Scale(opt.loadSize),
+            transforms.ToTensor(),
+            transforms.Normalize((0.5, 0.5, 0.5),
+                                 (0.5, 0.5, 0.5))])
+        # Dataset A
+        dataset_both = ImageFolder(root=opt.dataroot + '/' + opt.phase,
+                                        transform=transform, return_paths=True, font_trans=(not opt.flat), rgb=opt.rgb,
+                                        fineSize=opt.fineSize, loadSize=opt.loadSize)
+        dataset_one = ImageFolder(root=opt.auxiliarydataroot + '/' + opt.phase,
+                                   transform=transform, return_paths=True, font_trans=(not opt.flat), rgb=opt.rgb,
+                                   fineSize=opt.fineSize, loadSize=opt.loadSize)
+        
+        if opt.batchSize % 2 != 0:
+            raise ValueError('Batch Size must be even if split between two datasets')
+            
+        data_loader_one = torch.utils.data.DataLoader(
+            dataset_one,
+            batch_size=self.opt.batchSize//2,
+            shuffle=not self.opt.serial_batches,
+            num_workers=int(self.opt.nThreads))
+            
+        data_loader_both = torch.utils.data.DataLoader(
+            dataset_both,
+            batch_size=self.opt.batchSize//2,
+            shuffle=not self.opt.serial_batches,
+            num_workers=int(self.opt.nThreads))
+       
+        self.dataset = (dataset_one, dataset_both)
+        dict_inds = {}
+        test_dict = opt.dataroot+'/test_dict/dict.pkl'
+        if opt.phase=='test':
+            if os.path.isfile(test_dict):
+                dict_inds = pickle.load(open(test_dict, 'rb'), encoding='latin1')
+            else:
+                warnings.warn('Blanks in test data are random. create a pkl file in ~/data_path/test_dict/dict.pkl including predifined random indices')
+
+
+
+        """if opt.flat:
+            self._data = FlatData(data_loader, data_loader_base, opt.fineSize, opt.max_dataset_size, opt.rgb, dict_inds, opt.base_font, opt.blanks)
+        else:"""
+        self._data = MultiLanguageData(data_loader_both, data_loader_one, opt.auxiliarymissingcharacters, opt.fineSize, opt.max_dataset_size, opt.rgb, dict_inds, opt.blanks)
+
+    def name(self):
+        return 'MultiLanguageDataLoader'
+
+    def load_data(self):
+        return self._data
+
+    def __len__(self):
+        return min(len(self.dataset[0]), len(self.dataset[1]), self.opt.max_dataset_size)
+    
