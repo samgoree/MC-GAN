@@ -14,6 +14,7 @@
 
 # DATA=$1
 DATASET="./datasets/Capitals64_resized"
+# DATASET="./datasets/devangari_fonts/full_fonts/"
 experiment_dir="GlyphNet_train_devangari_auxiliary"
 AUXILIARYDATAROOT="./datasets/Capitals64_resized/"
 AUXILIARYMISSINGCHARACTERS=44
@@ -52,7 +53,7 @@ exec &> >(tee -a "$LOG")
 CUDA_VISIBLE_DEVICES=${CUDA_ID} python test.py --dataroot ${DATASET} --name "${experiment_dir}"\
 							 	--model ${MODEL} --which_model_netG ${MODEL_G} --which_model_netD ${MODEL_D} --n_layers_D ${n_layers_D} --which_model_preNet ${PRENET}\
 							 	--norm ${NORM} --input_nc ${IN_NC} --output_nc ${O_NC} --grps ${GRP}  --loadSize ${FINESIZE} --fineSize ${LOADSIZE} --display_id 0 --batchSize 1 \
-							 	--which_epoch ${EPOCH} --blanks 0.38 --conv3d --align_data
+							 	--which_epoch ${EPOCH} --blanks 0.8 --conv3d --align_data --onlyconditionononelanguage
 
 
 

@@ -63,7 +63,7 @@ class BaseOptions():
         self.parser.add_argument('--print_weights', action='store_true', help='print initial weights of the netG1 network')
         self.parser.add_argument('--orna', action='store_true', help='only consider OrnaNet and should have full b/w inputs in A')
         self.parser.add_argument('--flat', action='store_true', help='consider input image as a flat image')
-
+        self.parser.add_argument('--onlyconditionononelanguage', action='store_true', help='Only condition on the characters from the first language, never show the generator the second language')
 
         
 

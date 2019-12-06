@@ -54,7 +54,7 @@ exec &> >(tee -a "$LOG")
 CUDA_VISIBLE_DEVICES=${CUDA_ID} python train.py --dataroot ${DATASET} --auxiliarydataroot ${AUXILIARYDATAROOT} --auxiliarymissingcharacters ${AUXILIARYMISSINGCHARACTERS} --name "${experiment_dir}" \
 								--model ${MODEL} --which_model_netG ${MODEL_G} --which_model_netD ${MODEL_D}  --n_layers_D ${n_layers_D} --which_model_preNet ${PRENET} --conditional \
 								--norm ${NORM} --input_nc ${IN_NC} --output_nc ${O_NC} --grps ${GRP} --fineSize ${FINESIZE} --loadSize ${LOADSIZE} --lambda_A ${LAM_A} --align_data --use_dropout\
-								--display_id 0 --niter ${NITER} --niter_decay ${NITERD} --batchSize ${BATCHSIZE} --save_epoch_freq 100 --print_freq 100 --conv3d
+								--display_id 0 --niter ${NITER} --niter_decay ${NITERD} --batchSize ${BATCHSIZE} --save_epoch_freq 100 --print_freq 100 --conv3d --onlyconditionononelanguage
 
 
 # =======================================

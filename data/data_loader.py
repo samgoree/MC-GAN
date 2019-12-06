@@ -164,7 +164,7 @@ class Data(object):
                 file_name=file_name[0]
                 blank_ind = self.random_dict[file_name][0:int(self.blanks*A.size(1)/n_rgb)]
 
-            rgb_inds = np.tile(range(n_rgb),int(self.blanks*A.size(1)/n_rgb))
+            rgb_inds = np.tile(range(n_rgb),int(len(blank_ind)))
             # raise RuntimeError('rgb_inds ' + str(len(rgb_inds)) + ' blank_ind ' + str(len(blank_ind)))
             blank_ind = blank_ind*n_rgb + rgb_inds
             AA = A.clone()
@@ -175,7 +175,7 @@ class Data(object):
     
 class MultiLanguageData(object):
     def __init__(self, data_loader_both, data_loader_one, data_loader_one_missing_characters,
-                 fineSize, max_dataset_size, rgb, dict_test={}, blanks=0.7):
+                 fineSize, max_dataset_size, rgb, dict_test={}, blanks=0.7, only_condition_on_one_language=False):
         self.data_loader_both = data_loader_both
         self.data_loader_one = data_loader_one
         self.fineSize = fineSize
@@ -184,6 +184,7 @@ class MultiLanguageData(object):
         self.blanks = blanks
         self.random_dict=dict_test
         self.dict = False
+        self.only_condition_on_one_language = only_condition_on_one_language
         
         self.n_missing_characters = data_loader_one_missing_characters # magic number for devanagari
         
@@ -239,7 +240,12 @@ class MultiLanguageData(object):
                 # raise RuntimeError('A:' + str(A) + '\n' + str(A.size(1)))
                 # get a permutation of the characters. Take the first self.blanks of them
                 # and repeat it across the RGB axis
-                blank_ind_both = np.repeat(np.random.permutation(A_both.size(1)//n_rgb)[0:int(self.blanks*A_both.size(1)//n_rgb)],n_rgb)
+                if self.only_condition_on_one_language:
+                    present_chars = A_both.size(1)//n_rgb - self.n_missing_characters
+                    blank_ind_both = np.repeat(np.random.permutation(present_chars//n_rgb)[0:int(self.blanks*present_chars//n_rgb)],n_rgb)
+                    blank_ind_both = np.concatenate([blank_ind_both, np.arange(present_chars, A_one.size(1), dtype='int32')])
+                else:
+                    blank_ind_both = np.repeat(np.random.permutation(A_both.size(1)//n_rgb)[0:int(self.blanks*A_both.size(1)//n_rgb)],n_rgb)
                 # the number of present characters
                 present_chars = A_one.size(1)//n_rgb - self.n_missing_characters
                 blank_ind_one = np.repeat(np.random.permutation(present_chars//n_rgb)[0:int(self.blanks*present_chars//n_rgb)],n_rgb)
@@ -250,8 +256,13 @@ class MultiLanguageData(object):
                 if len(file_name)>1:
                     raise Exception('batch size should be 1')
                 file_name=file_name[0]
-                blank_ind = self.random_dict[file_name][0:int(self.blanks*A_both.size(1)/n_rgb)]
-            rgb_inds_both = np.tile(range(n_rgb),int(self.blanks*A_both.size(1)/n_rgb))
+                blank_ind_both = self.random_dict[file_name]
+                blank_ind_one = blank_ind_both
+                print('blank ind!', blank_ind_both)
+            if self.only_condition_on_one_language:
+                rgb_inds_both = np.tile(range(n_rgb),int(self.blanks*present_chars + self.n_missing_characters))
+            else:
+                rgb_inds_both = np.tile(range(n_rgb),int(self.blanks*A_both.size(1)/n_rgb))
             rgb_inds_one = np.tile(range(n_rgb),int(self.blanks*present_chars + self.n_missing_characters))
             # raise RuntimeError('rgb_inds ' + str(len(rgb_inds)) + ' blank_ind ' + str(len(blank_ind)))
             blank_ind_both = blank_ind_both*n_rgb + rgb_inds_both
@@ -620,7 +631,8 @@ class MultiLanguageDataLoader(BaseDataLoader):
         """if opt.flat:
             self._data = FlatData(data_loader, data_loader_base, opt.fineSize, opt.max_dataset_size, opt.rgb, dict_inds, opt.base_font, opt.blanks)
         else:"""
-        self._data = MultiLanguageData(data_loader_both, data_loader_one, opt.auxiliarymissingcharacters, opt.fineSize, opt.max_dataset_size, opt.rgb, dict_inds, opt.blanks)
+        self._data = MultiLanguageData(data_loader_both, data_loader_one, opt.auxiliarymissingcharacters, opt.fineSize, 
+                                        opt.max_dataset_size, opt.rgb, dict_inds, opt.blanks, only_condition_on_one_language=opt.onlyconditionononelanguage)
 
     def name(self):
         return 'MultiLanguageDataLoader'
