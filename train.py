@@ -32,7 +32,8 @@ for epoch in range(1, opt.niter + opt.niter_decay + 1):
         model.optimize_parameters()
         
         if total_steps % opt.display_freq == 0:
-            visualizer.display_current_results(model.get_current_visuals(), epoch)
+            visuals = model.get_current_visuals()
+            visualizer.display_current_results(visuals, epoch)
 
         if total_steps % opt.print_freq == 0:
             errors = model.get_current_errors()
@@ -57,3 +58,5 @@ for epoch in range(1, opt.niter + opt.niter_decay + 1):
 
     if epoch > opt.niter:
         model.update_learning_rate()
+    #if epoch % 100 == 0:
+    #    model.opt.lambda_A /= 2

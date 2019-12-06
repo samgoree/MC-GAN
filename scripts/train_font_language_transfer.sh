@@ -25,11 +25,11 @@ NORM=batch
 IN_NC=70
 O_NC=70
 GRP=70
-PRENET=none   #2_layers
+PRENET=2_layers
 FINESIZE=32
 LOADSIZE=32
 LAM_A=100
-NITER=250
+NITER=1000
 NITERD=100
 BATCHSIZE=30
 CUDA_ID=0
@@ -50,11 +50,11 @@ exec &> >(tee -a "$LOG")
 # =======================================
 ## Train Glyph Network on font dataset
 # =======================================
-#### TODO #### Add back --conditional
+
 CUDA_VISIBLE_DEVICES=${CUDA_ID} python train.py --dataroot ${DATASET} --auxiliarydataroot ${AUXILIARYDATAROOT} --auxiliarymissingcharacters ${AUXILIARYMISSINGCHARACTERS} --name "${experiment_dir}" \
-								--model ${MODEL} --which_model_netG ${MODEL_G} --which_model_netD ${MODEL_D}  --n_layers_D ${n_layers_D} --which_model_preNet ${PRENET}\
+								--model ${MODEL} --which_model_netG ${MODEL_G} --which_model_netD ${MODEL_D}  --n_layers_D ${n_layers_D} --which_model_preNet ${PRENET} --conditional \
 								--norm ${NORM} --input_nc ${IN_NC} --output_nc ${O_NC} --grps ${GRP} --fineSize ${FINESIZE} --loadSize ${LOADSIZE} --lambda_A ${LAM_A} --align_data --use_dropout\
-								--display_id 0 --niter ${NITER} --niter_decay ${NITERD} --batchSize ${BATCHSIZE} --save_epoch_freq 100 --print_freq 100 --conv3d 
+								--display_id 0 --niter ${NITER} --niter_decay ${NITERD} --batchSize ${BATCHSIZE} --save_epoch_freq 100 --print_freq 100 --conv3d
 
 
 # =======================================

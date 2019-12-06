@@ -46,15 +46,26 @@ class cGANModel(BaseModel):
         if self.isTrain:
             use_sigmoid = opt.no_lsgan
             if self.opt.conditional:
-                raise NotImplementedError("Cross-language training doesn't work for conditional mode yet")
                 if opt.which_model_preNet != 'none':
-                    self.preNet_A = networks.define_preNet(disc_ch+disc_ch, disc_ch+disc_ch, which_model_preNet=opt.which_model_preNet,norm=opt.norm, gpu_ids=self.gpu_ids)
+                    self.preNet_A = networks.define_preNet(
+                        disc_ch+disc_ch, disc_ch+disc_ch, which_model_preNet=opt.which_model_preNet,
+                        norm=opt.norm, gpu_ids=self.gpu_ids
+                    )
+                    self.preNet_A_missing_data = networks.define_preNet(
+                        disc_ch_for_missing_data+disc_ch_for_missing_data, 
+                        disc_ch_for_missing_data+disc_ch_for_missing_data,
+                        which_model_preNet=opt.which_model_preNet,
+                        norm=opt.norm, gpu_ids=self.gpu_ids
+                    )
                 nif = disc_ch+disc_ch
-
+                nif_missing_data = disc_ch_for_missing_data + disc_ch_for_missing_data
                 
                 netD_norm = opt.norm
 
                 self.netD = networks.define_D(nif, opt.ndf,
+                                             opt.which_model_netD,
+                                             opt.n_layers_D, netD_norm, use_sigmoid, gpu_ids=self.gpu_ids)
+                self.netD_for_missing_data = networks.define_D(nif_missing_data, opt.ndf,
                                              opt.which_model_netD,
                                              opt.n_layers_D, netD_norm, use_sigmoid, gpu_ids=self.gpu_ids)
 
@@ -72,11 +83,13 @@ class cGANModel(BaseModel):
             if self.isTrain:
                 if opt.which_model_preNet != 'none':
                     self.load_network(self.preNet_A, 'PRE_A', opt.which_epoch)
+                    self.load_network(self.preNet_A_missing_data, 'PRE_A_MISSING_DATA', opt.which_epoch)
                 self.load_network(self.netD, 'D', opt.which_epoch)
                 self.load_network(self.netD_for_missing_data, 'D_missing_data', opt.which_epoch)
 
         if self.isTrain:
             self.fake_AB_pool = ImagePool(opt.pool_size)
+            self.fake_AB_pool_no_missing = ImagePool(opt.pool_size)
             self.old_lr = opt.lr
             # define loss functions
             self.criterionGAN = networks.GANLoss(use_lsgan=not opt.no_lsgan, tensor=self.Tensor)
@@ -93,6 +106,8 @@ class cGANModel(BaseModel):
             if opt.which_model_preNet != 'none':
                 self.optimizer_preA = torch.optim.Adam(self.preNet_A.parameters(),
                                                     lr=opt.lr, betas=(opt.beta1, 0.999))
+                self.optimizer_preA_missing_data = torch.optim.Adam(self.preNet_A_missing_data.parameters(),
+                                                    lr=opt.lr, betas=(opt.beta1, 0.999))
             self.optimizer_D = torch.optim.Adam(self.netD.parameters(),
                                                 lr=opt.lr, betas=(opt.beta1, 0.999))
             self.optimizer_D_missing_data = torch.optim.Adam(self.netD_for_missing_data.parameters(),
@@ -104,6 +119,7 @@ class cGANModel(BaseModel):
             networks.print_network(self.netG)
             if opt.which_model_preNet != 'none':
                 networks.print_network(self.preNet_A)
+                networks.print_network(self.preNet_A_missing_data)
             networks.print_network(self.netD)
             networks.print_network(self.netD_for_missing_data)
             print('-----------------------------------------------')
@@ -114,7 +130,8 @@ class cGANModel(BaseModel):
         self.input_A.resize_(input_A.size()).copy_(input_A)
         self.input_B.resize_(input_B.size()).copy_(input_B)
         self.image_paths = input['A_paths']
-        self.missing_data_mask = input['missing_data_mask']
+        if 'missing_data_mask' in input:
+            self.missing_data_mask = input['missing_data_mask']
 
     def forward(self):
         self.real_A = Variable(self.input_A)
@@ -163,6 +180,7 @@ class cGANModel(BaseModel):
 
     
     def backward_D(self):
+        import matplotlib.pyplot as plt
         # Fake
         # stop backprop to the generator by detaching fake_B
         label_fake = self.add_noise_disc(False)
@@ -175,16 +193,35 @@ class cGANModel(BaseModel):
         self.real_B_reshaped = self.real_B
 
         if self.opt.conditional:
-            raise NotImplementedError("Cross-language training doesn't work for conditional mode yet")
 
             fake_AB = self.fake_AB_pool.query(torch.cat((self.real_A_reshaped, self.fake_B_reshaped), 1))
+            
+            fake_B_for_missing_data = self.fake_B.detach()[:, :self.disc_ch_for_missing_data]
+            A_for_missing_data = self.real_A.detach()[:, :self.disc_ch_for_missing_data]
+            fake_AB_no_missing = self.fake_AB_pool_no_missing.query(
+                torch.cat((A_for_missing_data, fake_B_for_missing_data), 1)
+            )
+            
+            # train the two language discriminator on fake output
             self.pred_fake_patch = self.netD.forward(fake_AB.detach())
+
             self.loss_D_fake = self.criterionGAN(self.pred_fake_patch, label_fake)
+            
+            # train the one language discriminator on fake output
+            self.pred_fake_patch_for_missing_data = self.netD_for_missing_data.forward(fake_AB_no_missing.detach())
+            self.loss_D_fake_for_missing_data = self.criterionGAN(self.pred_fake_patch_for_missing_data, label_fake)
+            
+            # train the preNet
             if self.opt.which_model_preNet != 'none':
                 #transform the input
                 transformed_AB = self.preNet_A.forward(fake_AB.detach())
                 self.pred_fake = self.netD.forward(transformed_AB)
                 self.loss_D_fake += self.criterionGAN(self.pred_fake, label_fake)
+                
+                transformed_AB_no_missing = self.preNet_A_missing_data.forward(fake_AB_no_missing.detach())
+                self.pred_fake_for_missing_data = self.netD_for_missing_data.forward(transformed_AB_no_missing)
+                self.loss_D_fake += self.criterionGAN(self.pred_fake_for_missing_data, label_fake)
+                
                             
         else:
             # train the two language discriminator on fake output
@@ -200,17 +237,48 @@ class cGANModel(BaseModel):
         label_real = self.add_noise_disc(True)
         # no idea how to do the conditional thing with missing data
         if self.opt.conditional:
-            raise NotImplementedError("Cross-language training doesn't work for conditional mode yet")
-            # don't test the discriminator on missing data
-            real_AB = torch.cat((self.real_A_reshaped, self.real_B_reshaped), 1)#.detach()
-            self.pred_real_patch = self.netD.forward(real_AB)
+            
+            # figure out the mask and shape for the new first half of the data
+            missing_data_mask_first_half = self.missing_data_mask[:self.real_B.shape[0]//2]
+
+            real_A_first_half = self.real_A[:self.real_A.shape[0]//2]
+            real_B_first_half = self.real_B[:self.real_B.shape[0]//2]
+            new_shape = list(real_A_first_half.shape)
+            new_shape[1] = -1
+            
+            # mask the first half of the input
+            real_A_first_half_no_missing = real_A_first_half[~missing_data_mask_first_half].reshape(new_shape)
+            # and the output
+            real_B_first_half_no_missing = real_B_first_half[~missing_data_mask_first_half].reshape(new_shape)
+            
+            # append them
+            real_AB_first_half = torch.cat((real_A_first_half_no_missing, real_B_first_half_no_missing), 1)#.detach()
+            self.pred_real_patch = self.netD.forward(real_AB_first_half)
             self.loss_D_real = self.criterionGAN(self.pred_real_patch, label_real)
+            
+            # and figure it out for the second half
+            real_A_second_half = self.real_A[self.real_A.shape[0]//2:]
+            missing_data_mask_second_half = self.missing_data_mask[self.real_B.shape[0]//2:]
+            real_A_second_half_no_missing = real_A_second_half[~missing_data_mask_second_half].reshape(new_shape)
+            # and the output
+            real_B_second_half = self.real_B[self.real_B.shape[0]//2:]
+            
+            real_B_second_half_no_missing = real_B_second_half[~missing_data_mask_second_half].reshape(new_shape)
+            
+            # append them
+            real_AB_second_half = torch.cat((real_A_second_half_no_missing, real_B_second_half_no_missing), 1)#.detach()
+            self.pred_real_patch_for_missing_data = self.netD_for_missing_data.forward(real_AB_second_half)
+            self.loss_D_real_for_missing_data = self.criterionGAN(self.pred_real_patch_for_missing_data, label_real)
 
             if self.opt.which_model_preNet != 'none':
                 #transform the input
-                transformed_A_real = self.preNet_A.forward(real_AB)
+                transformed_A_real = self.preNet_A.forward(real_AB_first_half)
                 self.pred_real = self.netD.forward(transformed_A_real)
                 self.loss_D_real += self.criterionGAN(self.pred_real, label_real)
+                
+                transformed_A_real_no_missing = self.preNet_A_missing_data.forward(real_AB_second_half)
+                self.pred_real_for_missing_data = self.netD_for_missing_data.forward(transformed_A_real_no_missing)
+                self.loss_D_real_for_missing_data += self.criterionGAN(self.pred_real_for_missing_data, label_real)
                             
         else:
             # don't test the discriminator on missing data
@@ -237,23 +305,31 @@ class cGANModel(BaseModel):
         self.loss_D = (self.loss_D_fake * 0.5 + self.loss_D_real) * 0.5
         self.loss_D_for_missing_data = (self.loss_D_fake_for_missing_data * 0.5 + self.loss_D_real_for_missing_data) * 0.5
 
-        self.loss_D.backward(retain_graph=True)
-        self.loss_D_for_missing_data.backward(retain_graph=True)
+        self.loss_D.backward()
+        self.loss_D_for_missing_data.backward()
 
 
     def backward_G(self):
         # First, G(A) should fake the discriminator
         if self.opt.conditional:
-            raise NotImplementedError("Cross-language training doesn't work for conditional mode yet")
-            #PATCH GAN
-            fake_AB = (torch.cat((self.real_A_reshaped, self.fake_B_reshaped), 1))
+            # two-language discriminator output
+            fake_AB = torch.cat((self.real_A_reshaped, self.fake_B_reshaped), 1)
             pred_fake_patch = self.netD.forward(fake_AB)
             self.loss_G_GAN = self.criterionGAN(pred_fake_patch, True)
+            
+            # one-language discriminator output
+            fake_AB_for_missing_data = torch.cat((self.real_A_reshaped[:, :self.disc_ch_for_missing_data], self.fake_B_reshaped[:, :self.disc_ch_for_missing_data]), 1)
+            pred_fake_patch_for_missing_data = self.netD_for_missing_data.forward(fake_AB_for_missing_data)
+            self.loss_G_GAN_for_missing_data = self.criterionGAN(pred_fake_patch_for_missing_data, True)
             if self.opt.which_model_preNet != 'none':
                 #global disc
                 transformed_A = self.preNet_A.forward(fake_AB)
                 pred_fake = self.netD.forward(transformed_A)
                 self.loss_G_GAN += self.criterionGAN(pred_fake, True)
+
+                transformed_A_for_missing_data = self.preNet_A_missing_data.forward(fake_AB_for_missing_data)
+                pred_fake_for_missing_data = self.netD_for_missing_data.forward(transformed_A_for_missing_data)
+                self.loss_G_GAN_for_missing_data += self.criterionGAN(pred_fake_for_missing_data, True)
         
         else:
             # train the generator on the two-language discriminator output
@@ -287,7 +363,7 @@ class cGANModel(BaseModel):
         self.loss_G_L1_for_missing_data = self.criterionL1(fake_B_second_half_no_missing, real_B_second_half_no_missing) * self.opt.lambda_A
         
 
-        self.loss_G = self.loss_G_GAN + self.loss_G_GAN_for_missing_data + self.loss_G_L1 + self.loss_G_L1_for_missing_data
+        self.loss_G = (self.loss_G_GAN + self.loss_G_GAN_for_missing_data + self.loss_G_L1 + self.loss_G_L1_for_missing_data) * 0.5
 
         self.loss_G.backward()
 
@@ -327,9 +403,15 @@ class cGANModel(BaseModel):
 
 
     def get_current_visuals(self):
-        real_A = util.tensor2im(self.real_A.data)
-        fake_B = util.tensor2im(self.fake_B.data)
-        real_B = util.tensor2im(self.real_B.data)
+        if self.real_A.shape[0] > 1:
+            ind = np.random.randint(len(self.real_A))
+            real_A = util.tensor2im(self.real_A.data[ind:ind+1])
+            fake_B = util.tensor2im(self.fake_B.data[ind:ind+1])
+            real_B = util.tensor2im(self.real_B.data[ind:ind+1])
+        else:
+            real_A = util.tensor2im(self.real_A.data)
+            fake_B = util.tensor2im(self.fake_B.data)
+            real_B = util.tensor2im(self.real_B.data)
         return OrderedDict([('real_A', real_A), ('fake_B', fake_B), ('real_B', real_B)])
 
     def save(self, label):

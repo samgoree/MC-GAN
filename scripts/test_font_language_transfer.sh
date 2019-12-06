@@ -12,9 +12,11 @@
 ## Set Parameters
 #=====================================
 
-DATA=$1
+# DATA=$1
 DATASET="./datasets/Capitals64_resized"
-experiment_dir="GlyphNet_train_devangari"
+experiment_dir="GlyphNet_train_devangari_auxiliary"
+AUXILIARYDATAROOT="./datasets/Capitals64_resized/"
+AUXILIARYMISSINGCHARACTERS=44
 MODEL=cGAN
 MODEL_G=resnet_6blocks
 MODEL_D=n_layers
@@ -23,7 +25,7 @@ NORM=batch
 IN_NC=70
 O_NC=70
 GRP=70
-PRENET=2_layers
+PRENET=none # change back to 2_layers
 FINESIZE=32
 LOADSIZE=32
 LAM_A=100
@@ -46,9 +48,10 @@ exec &> >(tee -a "$LOG")
 # =======================================
 ## Test Glyph Network on font dataset
 # =======================================
+# TODO: Add back --conditional
 CUDA_VISIBLE_DEVICES=${CUDA_ID} python test.py --dataroot ${DATASET} --name "${experiment_dir}"\
 							 	--model ${MODEL} --which_model_netG ${MODEL_G} --which_model_netD ${MODEL_D} --n_layers_D ${n_layers_D} --which_model_preNet ${PRENET}\
-							 	--norm ${NORM} --input_nc ${IN_NC} --output_nc ${O_NC} --grps ${GRP}  --loadSize ${FINESIZE} --fineSize ${LOADSIZE} --display_id 0 --batchSize 1 --conditional\
+							 	--norm ${NORM} --input_nc ${IN_NC} --output_nc ${O_NC} --grps ${GRP}  --loadSize ${FINESIZE} --fineSize ${LOADSIZE} --display_id 0 --batchSize 1 \
 							 	--which_epoch ${EPOCH} --blanks 0.38 --conv3d --align_data
 
 
